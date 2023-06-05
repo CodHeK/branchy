@@ -25,12 +25,21 @@ const getGitExtension = async () => {
 };
 
 const storeBranchTabs = async (repoPath, branchName, store) => {
-  const tabs = await vscode.window.tabGroups.all.flatMap(({ tabs }) =>
-    tabs.map((tab) => ({
-      path: tab.input.uri.path,
-      viewColumn: tab.group.viewColumn,
-    }))
-  );
+  const tabs = await vscode.window.tabGroups.all.flatMap(({ tabs }) => {
+	const isMultipleRepositoriesEnabled = getConfig().get('multipleRepositoriesEnabled', true);
+	return tabs.map((tab) => ({
+		path: tab.input.uri.path,
+		viewColumn: tab.group.viewColumn,
+	})).filter((tab) => {
+		if(!isMultipleRepositoriesEnabled) {
+			const repoName = repoPath.split('/').pop();
+			return tab.path.split('/').includes(repoName);
+		}
+
+		// allow tabs to be stored across multiple repositories.
+		return true;
+	});
+  });
 
   if (!store.has(repoPath)) {
     store.set(repoPath, new Map());
@@ -148,6 +157,10 @@ const trackActiveTextEditor = (gitExtension, context, store) => {
 // 		context.subscriptions
 // 	);
 // };
+
+const getConfig = () => {
+	return vscode.workspace.getConfiguration('branchy');
+}
 
 const activate = async (context) => {
   const store = new Map();
