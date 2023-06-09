@@ -4,6 +4,7 @@ const vscode = require("vscode");
 const chokidar = require("chokidar");
 const path = require('path');
 const fs = require('fs');
+const _ = require('lodash');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -13,6 +14,8 @@ const fs = require('fs');
  */
 
 let tabs = [];
+const store = new Map();
+const prevBranchNameMap = new Map();
 
 const getGitExtension = async () => {
   try {
@@ -29,12 +32,12 @@ const getGitExtension = async () => {
   return undefined;
 };
 
-const storeBranchTabs = async (repoPath, branchName, store) => {
+const storeBranchTabs = (repoPath, branchName) => {  
   if (!store.has(repoPath)) {
     store.set(repoPath, new Map());
   }
 
-  store.get(repoPath).set(branchName, tabs);
+  store.get(repoPath).set(branchName, _.cloneDeep(tabs));
 
   console.log(`
 	***** SAVING *****
@@ -47,17 +50,17 @@ const closeTabs = async () => {
   vscode.commands.executeCommand('workbench.action.closeAllEditors');
 };
 
-const openBranchTabs = async (repoPath, branchName, store) => {
+const openBranchTabs = async (repoPath, branchName) => {
   const branchStore = store.get(repoPath);
 
   if (branchStore.has(branchName)) {
-    const tabs = branchStore.get(branchName);
+    const tabsToOpen = branchStore.get(branchName);
     console.log(`
 		***** OPEN *****
 		Opening saved tabs for ${repoPath}:${branchName}
-		tabs = ${JSON.stringify(tabs)}
+		tabs = ${JSON.stringify(tabsToOpen)}
 		`);
-    for (const tab of tabs) {
+    for (const tab of tabsToOpen) {
       await vscode.commands.executeCommand(
         "vscode.open",
         vscode.Uri.file(tab.path),
@@ -68,18 +71,20 @@ const openBranchTabs = async (repoPath, branchName, store) => {
   }
 };
 
-const saveAndCloseCurrentEditorState = async (currentRepository, store) => {
-	const branchName = currentRepository.state.HEAD.name;
+const saveAndCloseCurrentEditorState = (currentRepository, metadata) => {
+	const branchName = metadata?.prevBranchName ?? currentRepository.state.HEAD.name;
 	const repoPath = currentRepository.rootUri.path;
 
 	// save current branch's tabs in store
-	await storeBranchTabs(repoPath, branchName, store);
+	storeBranchTabs(repoPath, branchName);
+
+  console.log(store);
 
 	// close all current tabs
-	await closeTabs();
+	closeTabs();
 };
 
-const trackVSCodeUIBranchUpdates = (gitExtension, editor, store) => {
+const trackVSCodeUIBranchUpdates = (gitExtension, editor) => {
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
   const repoPath = currentRepository.rootUri.path;
@@ -87,18 +92,19 @@ const trackVSCodeUIBranchUpdates = (gitExtension, editor, store) => {
   if (!store.has(repoPath)) {
     currentRepository.repository.onDidChangeOperations(async (e) => {
       if (e === "Checkout") {
-        await saveAndCloseCurrentEditorState(currentRepository, store);
+        console.log("Updating using VSCode UI watcher");
+        saveAndCloseCurrentEditorState(currentRepository);
       }
       if (e.operation?.kind === "Checkout") {
         const newBranchName = e.operation?.refLabel;
         // restore new branch's tabs
-        await openBranchTabs(repoPath, newBranchName, store);
+        await openBranchTabs(repoPath, newBranchName);
       }
     });
   }
 };
 
-const trackTerminalBranchUpdates = (gitExtension, editor, store) => {
+const trackTerminalBranchUpdates = (gitExtension, editor) => {
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
   const repoPath = currentRepository.rootUri.path;
@@ -106,37 +112,47 @@ const trackTerminalBranchUpdates = (gitExtension, editor, store) => {
   if (!store.has(repoPath)) {
 	const GIT_HEAD_FILE_PATH = path.join(repoPath, '.git', 'HEAD');
 	const watcher = chokidar.watch(GIT_HEAD_FILE_PATH);
+
+  prevBranchNameMap.set(repoPath, currentRepository.state.HEAD.name);
+
 	watcher.on('change', () => {
 		fs.readFile(GIT_HEAD_FILE_PATH, 'utf-8', async (err, data) => {
 			if(!err) {
-				await saveAndCloseCurrentEditorState(currentRepository, store);
+        const prevBranchName = prevBranchNameMap.get(repoPath);
+        const newBranchName = data.split('/').pop().trim();
 
-				const newBranchName = data.split('/').pop().trim();
+        if(prevBranchName !== newBranchName) {
+          console.log(`previous branch name: ${prevBranchName}`);
+          console.log(`Updating using terminal watcher: newBranchName: ${newBranchName}`);
 
-				// restore new branch's tabs
-				await openBranchTabs(repoPath, newBranchName, store);
+          saveAndCloseCurrentEditorState(currentRepository, { prevBranchName, });
+          prevBranchNameMap.set(repoPath, newBranchName);
+
+          // restore new branch's tabs
+          await openBranchTabs(repoPath, newBranchName);
+        }
 			}
 		})
 	});
   }
 };
 
-const trackGitExtensionUpdates = (gitExtension, context, store) => {
+const trackGitExtensionUpdates = (gitExtension, context) => {
   if (gitExtension.state === "initialized") {
-    trackActiveTextEditor(gitExtension, context, store);
+    trackActiveTextEditor(gitExtension, context);
   } else {
     gitExtension.onDidChangeState((e) => {
       if (e === "initialized") {
-        trackActiveTextEditor(gitExtension, context, store);
+        trackActiveTextEditor(gitExtension, context);
       }
     });
   }
 };
 
-const trackBranchUpdates = (gitExtension, editor, store) => {
+const trackBranchUpdates = (gitExtension, editor) => {
 	if(editor) {
-		trackVSCodeUIBranchUpdates(gitExtension, editor, store);
-		trackTerminalBranchUpdates(gitExtension, editor, store);
+		trackVSCodeUIBranchUpdates(gitExtension, editor);
+		trackTerminalBranchUpdates(gitExtension, editor);
 	}
 }
 
@@ -167,18 +183,24 @@ const updateOpenTabs = (gitExtension, editor) => {
   });
 }
 
-const trackActiveTextEditor = (gitExtension, context, store) => {
+const trackActiveTextEditor = (gitExtension, context) => {
   if (vscode.window.activeTextEditor) {
     const editor = vscode.window.activeTextEditor;
 
     updateOpenTabs(gitExtension, editor);
-    trackBranchUpdates(gitExtension, editor, store);
+
+    console.log(`tabs open`);
+    console.log(tabs);
+
+    trackBranchUpdates(gitExtension, editor);
   }
 
   vscode.window.onDidChangeActiveTextEditor(
     (editor) => {
       updateOpenTabs(gitExtension, editor);
-		  trackBranchUpdates(gitExtension, editor, store);
+      console.log(`tabs open`);
+      console.log(tabs);
+		  trackBranchUpdates(gitExtension, editor);
     },
     null,
     context.subscriptions
@@ -190,11 +212,10 @@ const getConfig = () => {
 };
 
 const activate = async (context) => {
-  const store = new Map();
   const gitExtension = await getGitExtension();
 
   if (gitExtension) {
-    trackGitExtensionUpdates(gitExtension, context, store);
+    trackGitExtensionUpdates(gitExtension, context);
   } else {
     vscode.window.showErrorMessage(
       "Make sure you enable the Git extension for branchy to work."
