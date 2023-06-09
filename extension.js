@@ -12,6 +12,8 @@ const fs = require('fs');
  * @param {vscode.ExtensionContext} context
  */
 
+let tabs = [];
+
 const getGitExtension = async () => {
   try {
     const extension = vscode.extensions.getExtension("vscode.git");
@@ -28,27 +30,6 @@ const getGitExtension = async () => {
 };
 
 const storeBranchTabs = async (repoPath, branchName, store) => {
-  const tabs = await vscode.window.tabGroups.all.flatMap(({ tabs }) => {
-    const isMultipleRepositoriesEnabled = getConfig().get(
-      "multipleRepositoriesEnabled",
-      true
-    );
-    return tabs
-      .map((tab) => ({
-        path: tab.input.uri.path,
-        viewColumn: tab.group.viewColumn,
-      }))
-      .filter((tab) => {
-        if (!isMultipleRepositoriesEnabled) {
-          const repoName = repoPath.split("/").pop();
-          return tab.path.split("/").includes(repoName);
-        }
-
-        // allow tabs to be stored across multiple repositories.
-        return true;
-      });
-  });
-
   if (!store.has(repoPath)) {
     store.set(repoPath, new Map());
   }
@@ -63,12 +44,7 @@ const storeBranchTabs = async (repoPath, branchName, store) => {
 };
 
 const closeTabs = async () => {
-  const tabs = vscode.window.tabGroups.all.flatMap(({ tabs }) => tabs);
-  tabs.forEach(async (tab) => {
-    await vscode.window.tabGroups.close(tab);
-  });
-
-  console.log("Closing all tabs");
+  vscode.commands.executeCommand('workbench.action.closeAllEditors');
 };
 
 const openBranchTabs = async (repoPath, branchName, store) => {
@@ -164,15 +140,45 @@ const trackBranchUpdates = (gitExtension, editor, store) => {
 	}
 }
 
+const updateOpenTabs = (gitExtension, editor) => {
+  const activeEditorFilePath = editor.document.uri;
+  const currentRepository = gitExtension.getRepository(activeEditorFilePath);
+  const repoPath = currentRepository.rootUri.path;
+
+  tabs = vscode.window.tabGroups.all.flatMap(({ tabs }) => {
+    const isMultipleRepositoriesEnabled = getConfig().get(
+      "multipleRepositoriesEnabled",
+      true
+    );
+    return tabs
+      .map((tab) => ({
+        path: tab.input.uri.path,
+        viewColumn: tab.group.viewColumn,
+      }))
+      .filter((tab) => {
+        if (!isMultipleRepositoriesEnabled) {
+          const repoName = repoPath.split("/").pop();
+          return tab.path.split("/").includes(repoName);
+        }
+
+        // allow tabs to be stored across multiple repositories.
+        return true;
+      });
+  });
+}
+
 const trackActiveTextEditor = (gitExtension, context, store) => {
   if (vscode.window.activeTextEditor) {
     const editor = vscode.window.activeTextEditor;
+
+    updateOpenTabs(gitExtension, editor);
     trackBranchUpdates(gitExtension, editor, store);
   }
 
   vscode.window.onDidChangeActiveTextEditor(
     (editor) => {
-		trackBranchUpdates(gitExtension, editor, store);
+      updateOpenTabs(gitExtension, editor);
+		  trackBranchUpdates(gitExtension, editor, store);
     },
     null,
     context.subscriptions
