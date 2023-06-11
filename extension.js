@@ -78,8 +78,6 @@ const saveAndCloseCurrentEditorState = (currentRepository, metadata) => {
 	// save current branch's tabs in store
 	storeBranchTabs(repoPath, branchName);
 
-  console.log(store);
-
 	// close all current tabs
 	closeTabs();
 };
@@ -92,7 +90,6 @@ const trackVSCodeUIBranchUpdates = (gitExtension, editor) => {
   if (!store.has(repoPath)) {
     currentRepository.repository.onDidChangeOperations(async (e) => {
       if (e === "Checkout") {
-        console.log("Updating using VSCode UI watcher");
         saveAndCloseCurrentEditorState(currentRepository);
       }
       if (e.operation?.kind === "Checkout") {
@@ -122,9 +119,6 @@ const trackTerminalBranchUpdates = (gitExtension, editor) => {
         const newBranchName = data.split('/').pop().trim();
 
         if(prevBranchName !== newBranchName) {
-          console.log(`previous branch name: ${prevBranchName}`);
-          console.log(`Updating using terminal watcher: newBranchName: ${newBranchName}`);
-
           saveAndCloseCurrentEditorState(currentRepository, { prevBranchName, });
           prevBranchNameMap.set(repoPath, newBranchName);
 
@@ -188,18 +182,12 @@ const trackActiveTextEditor = (gitExtension, context) => {
     const editor = vscode.window.activeTextEditor;
 
     updateOpenTabs(gitExtension, editor);
-
-    console.log(`tabs open`);
-    console.log(tabs);
-
     trackBranchUpdates(gitExtension, editor);
   }
 
   vscode.window.onDidChangeActiveTextEditor(
     (editor) => {
       updateOpenTabs(gitExtension, editor);
-      console.log(`tabs open`);
-      console.log(tabs);
 		  trackBranchUpdates(gitExtension, editor);
     },
     null,
