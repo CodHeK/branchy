@@ -1,6 +1,4 @@
-![logo](assets/tree-branch-black.png)
-
-## branchy
+![logo](assets/readme-logo.png)
 
 A VSCode extension that helps you keep track of your working files based on the feature branch you're currently in.
 
