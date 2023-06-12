@@ -1,4 +1,4 @@
-![logo](assets/readme-logo.png)
+<img src="assets/readme-logo.png" width=200>
 
 A VSCode extension that helps you keep track of your working files based on the feature branch you're currently in.
 
