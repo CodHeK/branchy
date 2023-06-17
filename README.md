@@ -2,6 +2,8 @@
     <img src="assets/readme-new-logo.png" width=200>
 </p>
 
+![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/gaganganapathyas.branchy)
+
 A VSCode extension that helps you keep track of your working files based on the feature branch you're currently in. Get it [here](https://marketplace.visualstudio.com/items?itemName=gaganganapathyas.branchy).
 
 ### What made me build this?
