@@ -75,15 +75,16 @@ const openBranchTabs = async (repoPath, branchName) => {
 const openTabs = async (filePaths) => {
   const openFilePromises = filePaths.map((filePath) => vscode.workspace.openTextDocument(filePath));
 
-  await Promise.all(openFilePromises)
-    .then((openedDocuments) => {
-      openedDocuments.forEach((openedDocument) => {
-        vscode.window.showTextDocument(openedDocument, { preview: false, viewColumn: vscode.ViewColumn.Active })
-      });
-    })
-    .catch((error) => {
-      console.error('Error occurred while opening files:', error);
+  try {
+    const openedDocuments = await Promise.all(openFilePromises);
+
+    openedDocuments.forEach((openedDocument) => {
+      vscode.window.showTextDocument(openedDocument, { preview: false, viewColumn: vscode.ViewColumn.Active })
     });
+  }
+  catch(error) {
+    console.error('Error occurred while opening files:', error);
+  }
 }
 
 const saveAndCloseCurrentEditorState = async (currentRepository, metadata, shouldCloseOpenTabs = true) => {
