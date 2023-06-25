@@ -101,11 +101,15 @@ const saveAndCloseCurrentEditorState = async (currentRepository, metadata, shoul
 };
 
 const trackVSCodeUIBranchUpdates = (gitExtension, editor) => {
+  if(!editor) {
+    return;
+  }
+
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository.rootUri.path;
+  const repoPath = currentRepository?.rootUri?.path ?? '';
 
-  if (!store.has(repoPath)) {
+  if (currentRepository && !store.has(repoPath)) {
     currentRepository.repository.onDidChangeOperations(async (e) => {
       if (e === "Checkout") {
         await saveAndCloseCurrentEditorState(currentRepository);
@@ -138,11 +142,15 @@ const storeExistingBranches = (repoPath) => {
 }
 
 const trackTerminalBranchUpdates = async (gitExtension, editor) => {
+  if(!editor) {
+    return;
+  }
+
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository.rootUri.path;
+  const repoPath = currentRepository?.rootUri?.path ?? '';
 
-  if (!store.has(repoPath)) {
+  if (currentRepository && !store.has(repoPath)) {
     await storeExistingBranches(repoPath);
 
     const GIT_HEAD_FILE_PATH = path.join(repoPath, '.git', 'HEAD');
@@ -205,17 +213,22 @@ const trackBranchUpdates = (gitExtension, editor) => {
 }
 
 const updateOpenTabs = (gitExtension, editor) => {
+  if(!editor) {
+    tabs = [];
+    return;
+  }
+
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository.rootUri.path;
+  const repoPath = currentRepository?.rootUri?.path ?? '';
 
-  tabs = vscode.window.tabGroups.all.flatMap(({ tabs }) => {
+  tabs = vscode.window.tabGroups.all.flatMap(({ tabs: openTabs }) => {
     const isMultipleRepositoriesEnabled = getConfig().get(
       "multipleRepositoriesEnabled",
       true
     );
-    return tabs
-      .map((tab) => ({
+    return openTabs
+      ?.map((tab) => ({
         path: tab.input.uri.path,
         viewColumn: tab.group.viewColumn,
       }))
