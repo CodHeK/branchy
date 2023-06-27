@@ -79,7 +79,7 @@ const openTabs = async (filePaths) => {
     const openedDocuments = await Promise.all(openFilePromises);
 
     openedDocuments.forEach((openedDocument) => {
-      vscode.window.showTextDocument(openedDocument, { preview: false, viewColumn: vscode.ViewColumn.Active })
+      vscode.window.showTextDocument(openedDocument, { preview: false, viewColumn: 1 })
     });
   }
   catch(error) {
