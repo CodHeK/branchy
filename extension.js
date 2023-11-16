@@ -5,6 +5,8 @@ const chokidar = require("chokidar");
 const path = require("path");
 const fs = require("fs");
 const _ = require("lodash");
+const memoizeOne = require('memoize-one');
+const memoizeOneAsync = require('async-memoize-one');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -17,7 +19,7 @@ let tabs = [];
 const store = new Map();
 const prevBranchNameMap = new Map();
 const repoBranches = new Map();
-const DEBUG = false;
+const DEBUG = true;
 
 const log = (msg) => {
   if(DEBUG) {
@@ -40,7 +42,7 @@ const getGitExtension = async () => {
   return undefined;
 };
 
-const storeBranchTabs = (repoPath, branchName) => {
+const storeBranchTabs = memoizeOne((repoPath, branchName) => {
   if (!store.has(repoPath)) {
     store.set(repoPath, new Map());
   }
@@ -52,7 +54,7 @@ const storeBranchTabs = (repoPath, branchName) => {
 	Saved tabs for ${repoPath}:${branchName} 
 	tabs = ${JSON.stringify(tabs)}
 	`);
-};
+});
 
 const closeTabs = () => {
   log(`***** CLOSING TABS *****`);
@@ -62,7 +64,7 @@ const closeTabs = () => {
   });
 };
 
-const openBranchTabs = async (repoPath, branchName) => {
+const openBranchTabsNonMemoized = async (repoPath, branchName) => {
   const branchStore = store.get(repoPath);
 
   if (branchStore.has(branchName)) {
@@ -77,7 +79,7 @@ const openBranchTabs = async (repoPath, branchName) => {
   }
 };
 
-const openTabs = async (filePaths) => {
+const openTabsNonMemoized  = async (filePaths) => {
   try {
     const filesToShowPromises = filePaths.map((filePath) =>
       vscode.window.showTextDocument(vscode.Uri.file(filePath), {
@@ -90,6 +92,9 @@ const openTabs = async (filePaths) => {
     log(`Error occurred while opening files: ${JSON.stringify(error)}`);
   }
 };
+
+const openBranchTabs = memoizeOneAsync(openBranchTabsNonMemoized);
+const openTabs = memoizeOneAsync(openTabsNonMemoized);
 
 const saveAndCloseCurrentEditorState = async (
   currentRepository,
