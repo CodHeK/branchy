@@ -2,9 +2,9 @@
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require("vscode");
 const chokidar = require("chokidar");
-const path = require('path');
-const fs = require('fs');
-const _ = require('lodash');
+const path = require("path");
+const fs = require("fs");
+const _ = require("lodash");
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -17,6 +17,13 @@ let tabs = [];
 const store = new Map();
 const prevBranchNameMap = new Map();
 const repoBranches = new Map();
+const DEBUG = false;
+
+const log = (msg) => {
+  if(DEBUG) {
+    console.log(msg);
+  }
+}
 
 const getGitExtension = async () => {
   try {
@@ -33,14 +40,14 @@ const getGitExtension = async () => {
   return undefined;
 };
 
-const storeBranchTabs = (repoPath, branchName) => {  
+const storeBranchTabs = (repoPath, branchName) => {
   if (!store.has(repoPath)) {
     store.set(repoPath, new Map());
   }
 
   store.get(repoPath).set(branchName, _.cloneDeep(tabs));
 
-  console.log(`
+  log(`
 	***** SAVING *****
 	Saved tabs for ${repoPath}:${branchName} 
 	tabs = ${JSON.stringify(tabs)}
@@ -48,9 +55,9 @@ const storeBranchTabs = (repoPath, branchName) => {
 };
 
 const closeTabs = () => {
-  console.log(`***** CLOSING TABS *****`);
+  log(`***** CLOSING TABS *****`);
   return new Promise(async (resolve) => {
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     setTimeout(() => resolve(), 500);
   });
 };
@@ -60,54 +67,56 @@ const openBranchTabs = async (repoPath, branchName) => {
 
   if (branchStore.has(branchName)) {
     const tabsToOpen = branchStore.get(branchName);
-    console.log(`
+    log(`
 		***** OPEN *****
 		Opening saved tabs for ${repoPath}:${branchName}
 		tabs = ${JSON.stringify(tabsToOpen)}
 		`);
 
-    await openTabs(
-      tabsToOpen.map((tab) => tab.path)
-    );
+    await openTabs(tabsToOpen.map((tab) => tab.path));
   }
 };
 
 const openTabs = async (filePaths) => {
-  const openFilePromises = filePaths.map((filePath) => vscode.workspace.openTextDocument(filePath));
-
   try {
-    const openedDocuments = await Promise.all(openFilePromises);
-
-    openedDocuments.forEach((openedDocument) => {
-      vscode.window.showTextDocument(openedDocument, { preview: false, viewColumn: 1 })
-    });
+    const filesToShowPromises = filePaths.map((filePath) =>
+      vscode.window.showTextDocument(vscode.Uri.file(filePath), {
+        preview: false,
+        viewColumn: 1,
+      })
+    );
+    await Promise.all(filesToShowPromises);
+  } catch (error) {
+    log(`Error occurred while opening files: ${JSON.stringify(error)}`);
   }
-  catch(error) {
-    console.error('Error occurred while opening files:', error);
-  }
-}
+};
 
-const saveAndCloseCurrentEditorState = async (currentRepository, metadata, shouldCloseOpenTabs = true) => {
-	const branchName = metadata?.prevBranchName ?? currentRepository.state.HEAD.name;
-	const repoPath = currentRepository.rootUri.path;
+const saveAndCloseCurrentEditorState = async (
+  currentRepository,
+  metadata,
+  shouldCloseOpenTabs = true
+) => {
+  const branchName =
+    metadata?.prevBranchName ?? currentRepository.state.HEAD.name;
+  const repoPath = currentRepository.rootUri.path;
 
-	// save current branch's tabs in store
-	storeBranchTabs(repoPath, branchName);
+  // save current branch's tabs in store
+  storeBranchTabs(repoPath, branchName);
 
-  if(shouldCloseOpenTabs) {
+  if (shouldCloseOpenTabs) {
     // close all current tabs
     await closeTabs();
   }
 };
 
 const trackVSCodeUIBranchUpdates = (gitExtension, editor) => {
-  if(!editor) {
+  if (!editor) {
     return;
   }
 
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository?.rootUri?.path ?? '';
+  const repoPath = currentRepository?.rootUri?.path ?? "";
 
   if (currentRepository && !store.has(repoPath)) {
     currentRepository.repository.onDidChangeOperations(async (e) => {
@@ -125,13 +134,13 @@ const trackVSCodeUIBranchUpdates = (gitExtension, editor) => {
 };
 
 const storeExistingBranches = (repoPath) => {
-  repoBranches[repoPath] = new Set();  
+  repoBranches[repoPath] = new Set();
 
-  const headDir = path.join(repoPath, '.git', 'refs', 'heads');
+  const headDir = path.join(repoPath, ".git", "refs", "heads");
 
   return new Promise((resolve) => {
     fs.readdir(headDir, (err, files) => {
-      if(!err) {
+      if (!err) {
         files.forEach((file) => {
           repoBranches[repoPath].add(file);
         });
@@ -139,55 +148,60 @@ const storeExistingBranches = (repoPath) => {
       }
     });
   });
-}
+};
 
 const trackTerminalBranchUpdates = async (gitExtension, editor) => {
-  if(!editor) {
+  if (!editor) {
     return;
   }
 
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository?.rootUri?.path ?? '';
+  const repoPath = currentRepository?.rootUri?.path ?? "";
 
   if (currentRepository && !store.has(repoPath)) {
     await storeExistingBranches(repoPath);
 
-    const GIT_HEAD_FILE_PATH = path.join(repoPath, '.git', 'HEAD');
+    const GIT_HEAD_FILE_PATH = path.join(repoPath, ".git", "HEAD");
     const gitHeadWatcher = chokidar.watch(GIT_HEAD_FILE_PATH);
 
     prevBranchNameMap.set(repoPath, currentRepository.state.HEAD.name);
 
-    gitHeadWatcher.on('change', () => {
-        fs.readFile(GIT_HEAD_FILE_PATH, 'utf-8', async (err, data) => {
-          if(!err) {
-            const prevBranchName = prevBranchNameMap.get(repoPath);
-            const newBranchName = data.split('/').pop().trim();
+    gitHeadWatcher.on("change", () => {
+      fs.readFile(GIT_HEAD_FILE_PATH, "utf-8", async (err, data) => {
+        if (!err) {
+          const prevBranchName = prevBranchNameMap.get(repoPath);
+          const newBranchName = data.split("/").pop().trim();
 
-            if(prevBranchName !== newBranchName) {
-              if(repoBranches[repoPath].has(newBranchName)) {
-                await saveAndCloseCurrentEditorState(currentRepository, { prevBranchName, });
+          if (prevBranchName !== newBranchName) {
+            if (repoBranches[repoPath].has(newBranchName)) {
+              await saveAndCloseCurrentEditorState(currentRepository, {
+                prevBranchName,
+              });
 
-                // restore new branch's tabs
-                await openBranchTabs(repoPath, newBranchName);
-              }
-              else {
-                // Keep open editors as it is when checking out a new branch
-                repoBranches[repoPath].add(newBranchName);
-                await saveAndCloseCurrentEditorState(currentRepository, { prevBranchName, }, false);
-              }
-
-              prevBranchNameMap.set(repoPath, newBranchName);
+              // restore new branch's tabs
+              await openBranchTabs(repoPath, newBranchName);
+            } else {
+              // Keep open editors as it is when checking out a new branch
+              repoBranches[repoPath].add(newBranchName);
+              await saveAndCloseCurrentEditorState(
+                currentRepository,
+                { prevBranchName },
+                false
+              );
             }
+
+            prevBranchNameMap.set(repoPath, newBranchName);
           }
-        })
+        }
       });
-    
-    const REF_HEADS_DIR = path.join(repoPath, '.git', 'refs', 'heads');
+    });
+
+    const REF_HEADS_DIR = path.join(repoPath, ".git", "refs", "heads");
     const refHeadsWatcher = chokidar.watch(REF_HEADS_DIR);
 
-    refHeadsWatcher.on('unlink', async () => {
-      console.log("branch deleted");
+    refHeadsWatcher.on("unlink", async () => {
+      log("branch deleted");
       await storeExistingBranches(repoPath);
     });
   }
@@ -206,21 +220,21 @@ const trackGitExtensionUpdates = (gitExtension, context) => {
 };
 
 const trackBranchUpdates = (gitExtension, editor) => {
-	if(editor) {
-		trackVSCodeUIBranchUpdates(gitExtension, editor);
-		trackTerminalBranchUpdates(gitExtension, editor);
-	}
-}
+  if (editor) {
+    trackVSCodeUIBranchUpdates(gitExtension, editor);
+    trackTerminalBranchUpdates(gitExtension, editor);
+  }
+};
 
 const updateOpenTabs = (gitExtension, editor) => {
-  if(!editor) {
+  if (!editor) {
     tabs = [];
     return;
   }
 
   const activeEditorFilePath = editor.document.uri;
   const currentRepository = gitExtension.getRepository(activeEditorFilePath);
-  const repoPath = currentRepository?.rootUri?.path ?? '';
+  const repoPath = currentRepository?.rootUri?.path ?? "";
 
   tabs = vscode.window.tabGroups.all.flatMap(({ tabs: openTabs }) => {
     const isMultipleRepositoriesEnabled = getConfig().get(
@@ -242,7 +256,7 @@ const updateOpenTabs = (gitExtension, editor) => {
         return true;
       });
   });
-}
+};
 
 const trackActiveTextEditor = (gitExtension, context) => {
   if (vscode.window.activeTextEditor) {
@@ -255,7 +269,7 @@ const trackActiveTextEditor = (gitExtension, context) => {
   vscode.window.onDidChangeActiveTextEditor(
     (editor) => {
       updateOpenTabs(gitExtension, editor);
-		  trackBranchUpdates(gitExtension, editor);
+      trackBranchUpdates(gitExtension, editor);
     },
     null,
     context.subscriptions
