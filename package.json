@@ -2,7 +2,7 @@
   "name": "branchy",
   "displayName": "branchy",
   "description": "A VSCode extension that helps you keep track of your working files based on the feature branch you're currently in.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "gaganganapathyas",
   "repository": {
     "type": "git",
